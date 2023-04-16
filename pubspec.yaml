@@ -39,8 +39,10 @@ dependencies:
   flutter_sound: ^9.2.13
   assets_audio_player: ^3.0.6
   permission_handler: ^8.1.2
-  path: ^1.8.0
-  intl: ^0.17.0
+  record: ^4.4.4
+  just_audio: ^0.9.32
+  flutter_bloc: ^8.1.2
+  flutter_camera: ^0.1.1
 
 dev_dependencies:
   flutter_test:

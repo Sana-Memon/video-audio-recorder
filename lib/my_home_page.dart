@@ -1,188 +1,102 @@
-import 'dart:async';
 import 'dart:io';
 
-import 'package:assets_audio_player/assets_audio_player.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/src/widgets/container.dart';
+import 'package:flutter/src/widgets/framework.dart';
 import 'package:flutter_sound/flutter_sound.dart';
-import 'package:flutter_sound/public/flutter_sound_recorder.dart';
-import 'package:intl/date_symbol_data_file.dart';
-import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-  final String title;
+  const MyHomePage({super.key});
+
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  late FlutterSoundRecorder _recordingSession;
-  final recordingPlayer = AssetsAudioPlayer();
-  late String pathToAudio;
-  bool _playAudio = false;
-  String _timerText = '00:00:00';
   @override
   void initState() {
+    initRecorder();
     super.initState();
-    initializer();
   }
 
-  void initializer() async {
-    pathToAudio = '/sdcard/Download/temp.wav';
-    _recordingSession = FlutterSoundRecorder();
-    await _recordingSession._openAudioSession(
-        focus: AudioFocus.requestFocusAndStopOthers,
-        category: SessionCategory.playAndRecord,
-        mode: SessionMode.modeDefault,
-        device: AudioDevice.speaker);
-    await _recordingSession.setSubscriptionDuration(Duration(milliseconds: 10));
-    await initializeDateFormatting();
-    await Permission.microphone.request();
-    await Permission.storage.request();
-    await Permission.manageExternalStorage.request();
+  @override
+  void dispose() {
+    recorder.closeRecorder();
+    super.dispose();
+  }
+
+  final recorder = FlutterSoundRecorder();
+
+  Future initRecorder() async {
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      throw 'Permission not granted';
+    }
+    await recorder.openRecorder();
+    recorder.setSubscriptionDuration(const Duration(milliseconds: 500));
+  }
+
+  Future startRecord() async {
+    await recorder.startRecorder(toFile: "audio");
+  }
+
+  Future stopRecorder() async {
+    final filePath = await recorder.stopRecorder();
+    final file = File(filePath!);
+    print('Recorded file path: $filePath');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black87,
-      appBar: AppBar(title: Text('Audio Recording and Playing')),
+      backgroundColor: Colors.teal.shade700,
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: <Widget>[
-            SizedBox(
-              height: 40,
-            ),
-            Container(
-              child: Center(
-                child: Text(
-                  _timerText,
-                  style: TextStyle(fontSize: 70, color: Colors.red),
-                ),
-              ),
-            ),
-            SizedBox(
-              height: 20,
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                createElevatedButton(
-                  icon: Icons.mic,
-                  iconColor: Colors.red,
-                  onPressFunc: startRecording,
-                ),
-                SizedBox(
-                  width: 30,
-                ),
-                createElevatedButton(
-                  icon: Icons.stop,
-                  iconColor: Colors.red,
-                  onPressFunc: stopRecording,
-                ),
-              ],
-            ),
-            SizedBox(
-              height: 20,
-            ),
-            ElevatedButton.icon(
-              style:
-                  ElevatedButton.styleFrom(elevation: 9.0, primary: Colors.red),
-              onPressed: () {
-                setState(() {
-                  _playAudio = !_playAudio;
-                });
-                if (_playAudio) playFunc();
-                if (!_playAudio) stopPlayFunc();
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            StreamBuilder<RecordingDisposition>(
+              builder: (context, snapshot) {
+                final duration =
+                    snapshot.hasData ? snapshot.data!.duration : Duration.zero;
+
+                String twoDigits(int n) => n.toString().padLeft(2, '0');
+
+                final twoDigitMinutes =
+                    twoDigits(duration.inMinutes.remainder(60));
+                final twoDigitSeconds =
+                    twoDigits(duration.inSeconds.remainder(60));
+
+                return Text(
+                  '$twoDigitMinutes:$twoDigitSeconds',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 50,
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
               },
-              icon: _playAudio
-                  ? Icon(
-                      Icons.stop,
-                    )
-                  : Icon(Icons.play_arrow),
-              label: _playAudio
-                  ? Text(
-                      "Stop",
-                      style: TextStyle(
-                        fontSize: 28,
-                      ),
-                    )
-                  : Text(
-                      "Play",
-                      style: TextStyle(
-                        fontSize: 28,
-                      ),
-                    ),
+              stream: recorder.onProgress,
             ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+                onPressed: () async {
+                  if (recorder.isRecording) {
+                    await stopRecorder();
+                    setState(() {});
+                  } else {
+                    await startRecord();
+                    setState(() {});
+                  }
+                },
+                child: Icon(
+                  recorder.isRecording ? Icons.stop : Icons.mic,
+                  size: 100,
+                  color: Colors.white,
+                ))
           ],
         ),
       ),
     );
-  }
-
-  ElevatedButton createElevatedButton(
-      {IconData? icon, Color? iconColor, required VoidCallback onPressFunc}) {
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        padding: EdgeInsets.all(6.0),
-        side: BorderSide(
-          color: Colors.red,
-          width: 4.0,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        primary: Colors.white,
-        elevation: 9.0,
-      ),
-      onPressed: onPressFunc,
-      icon: Icon(
-        icon,
-        color: iconColor,
-        size: 38.0,
-      ),
-      label: Text(''),
-    );
-  }
-
-  Future<void> startRecording() async {
-    Directory directory = Directory(path.dirname(pathToAudio));
-    if (!directory.existsSync()) {
-      directory.createSync();
-    }
-    _recordingSession._openAudioSession();
-    await _recordingSession.startRecorder(
-      toFile: pathToAudio,
-      codec: Codec.pcm16WAV,
-    );
-    StreamSubscription _recorderSubscription =
-        _recordingSession.onProgress!.listen((e) {
-      var date = DateTime.fromMillisecondsSinceEpoch(e.duration.inMilliseconds,
-          isUtc: true);
-      var timeText = DateFormat('mm:ss:SS', 'en_GB').format(date);
-      setState(() {
-        _timerText = timeText.substring(0, 8);
-      });
-    });
-    _recorderSubscription.cancel();
-  }
-
-  Future<String?> stopRecording() async {
-    _recordingSession._closeAudioSession();
-    return await _recordingSession.stopRecorder();
-  }
-
-  Future<void> playFunc() async {
-    recordingPlayer.open(
-      Audio.file(pathToAudio),
-      autoStart: true,
-      showNotification: true,
-    );
-  }
-
-  Future<void> stopPlayFunc() async {
-    recordingPlayer.stop();
   }
 }
